@@ -1,0 +1,57 @@
+- name: Configure Linux Environment
+  hosts: all
+
+  vars:
+    user_home: "/home/{{ ansible_user }}"
+    bin_dir: "{{ user_home }}/bin"
+    venv_dir: "{{ user_home }}/ansible-venv"
+
+  tasks:
+
+    - name: Install python3-venv
+      apt:
+        name: python3-venv
+        state: present
+        update_cache: yes
+      become: yes
+      when: ansible_facts['os_family'] == "Debian"
+
+    - name: Ensure bin directory exists
+      file:
+        path: "{{ bin_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Add bin to PATH
+      lineinfile:
+        path: "{{ user_home }}/.bashrc"
+        line: 'export PATH="$HOME/bin:$PATH"'
+        state: present
+
+    - name: Create virtual environment
+      command: python3 -m venv "{{ venv_dir }}"
+      args:
+        creates: "{{ venv_dir }}"
+
+    - name: Ensure pip exists in venv
+      command: "{{ venv_dir }}/bin/python -m ensurepip --upgrade"
+
+    - name: Upgrade pip
+      command: "{{ venv_dir }}/bin/python -m pip install --upgrade pip"
+
+    - name: Install Ansible
+      command: "{{ venv_dir }}/bin/pip install ansible"
+
+    - name: Copy requirements.yml to remote server
+      copy:
+        src: requirements.yml
+        dest: "{{ user_home }}/requirements.yml"
+
+    - name: Install Ansible collections
+      command: "{{ venv_dir }}/bin/ansible-galaxy collection install -r {{ user_home }}/requirements.yml"
+
+    - name: Add kubectl alias
+      lineinfile:
+        path: "{{ user_home }}/.bashrc"
+        line: "alias k=kubectl"
+        state: present

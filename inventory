@@ -1,0 +1,2 @@
+[servers]
+server1 ansible_host=172.174.241.98 ansible_user=azureuser ansible_ssh_private_key_file=~/Downloads/playbookvmShrikant_key.pem

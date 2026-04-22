@@ -1,0 +1,31 @@
+# Virtual environments
+ansible-venv/
+venv/
+.venv/
+
+# SSH keys
+*.pem
+*.key
+*.pub
+
+# Ansible
+*.retry
+.ansible/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
