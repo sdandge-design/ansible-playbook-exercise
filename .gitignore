@@ -2,7 +2,7 @@
 ansible-venv/
 venv/
 .venv/
-
+.ansible
 # SSH keys
 *.pem
 *.key

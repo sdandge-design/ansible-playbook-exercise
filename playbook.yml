@@ -1,5 +1,7 @@
-- name: Configure Linux Environment
+---
+- name: Configure Linux Environment (Debian + RedHat)
   hosts: all
+  become: yes
 
   vars:
     user_home: "/home/{{ ansible_user }}"
@@ -8,19 +10,34 @@
 
   tasks:
 
-    - name: Install python3-venv
+    # -----------------------------
+    # Install python venv package
+    # -----------------------------
+    - name: Install python3-venv on Debian
       apt:
         name: python3-venv
         state: present
         update_cache: yes
-      become: yes
       when: ansible_facts['os_family'] == "Debian"
 
+    - name: Install python3 + venv tools on RedHat
+      dnf:
+        name:
+          - python3
+          - python3-virtualenv
+        state: present
+      when: ansible_facts['os_family'] == "RedHat"
+
+    # -----------------------------
+    # User environment setup
+    # -----------------------------
     - name: Ensure bin directory exists
       file:
         path: "{{ bin_dir }}"
         state: directory
         mode: '0755'
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
 
     - name: Add bin to PATH
       lineinfile:
@@ -28,30 +45,75 @@
         line: 'export PATH="$HOME/bin:$PATH"'
         state: present
 
-    - name: Create virtual environment
+    # -----------------------------
+    # Python Virtual Environment
+    # -----------------------------
+    - name: Ensure virtual environment exists
       command: python3 -m venv "{{ venv_dir }}"
       args:
         creates: "{{ venv_dir }}"
 
-    - name: Ensure pip exists in venv
-      command: "{{ venv_dir }}/bin/python -m ensurepip --upgrade"
+    # -----------------------------
+    # Install pip + Ansible in venv
+    # -----------------------------
+    - name: Upgrade pip inside venv
+      pip:
+        name: pip
+        state: latest
+        virtualenv: "{{ venv_dir }}"
 
-    - name: Upgrade pip
-      command: "{{ venv_dir }}/bin/python -m pip install --upgrade pip"
+    - name: Install Ansible inside venv
+      pip:
+        name: ansible
+        state: present
+        virtualenv: "{{ venv_dir }}"
 
-    - name: Install Ansible
-      command: "{{ venv_dir }}/bin/pip install ansible"
-
-    - name: Copy requirements.yml to remote server
+    # -----------------------------
+    # Copy and install collections
+    # -----------------------------
+    - name: Copy requirements.yml
       copy:
         src: requirements.yml
         dest: "{{ user_home }}/requirements.yml"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0644'
 
-    - name: Install Ansible collections
-      command: "{{ venv_dir }}/bin/ansible-galaxy collection install -r {{ user_home }}/requirements.yml"
+    - name: Install Ansible collections (idempotent)
+      command: >
+        {{ venv_dir }}/bin/ansible-galaxy collection install
+        -r {{ user_home }}/requirements.yml
+      args:
+        creates: "{{ user_home }}/.ansible/collections"
 
+    # -----------------------------
+    # Shell configuration
+    # -----------------------------
     - name: Add kubectl alias
       lineinfile:
         path: "{{ user_home }}/.bashrc"
         line: "alias k=kubectl"
         state: present
+
+    # -----------------------------
+    # Validation
+    # -----------------------------
+    - name: Check virtual environment exists
+      stat:
+        path: "{{ venv_dir }}"
+      register: venv_stat
+
+    - name: Fail if venv missing
+      fail:
+        msg: "Virtual environment was not created!"
+      when: not venv_stat.stat.exists
+
+    - name: Verify Ansible installation
+      command: "{{ venv_dir }}/bin/ansible --version"
+      register: ansible_check
+      changed_when: false
+      failed_when: ansible_check.rc != 0
+
+    - name: Show Ansible version
+      debug:
+        var: ansible_check.stdout
