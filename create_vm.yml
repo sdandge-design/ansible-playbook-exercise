@@ -1,0 +1,84 @@
+---
+- name: Create Azure VM
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    resource_group: AAP-demo
+    vm_name: playbook-vm
+    location: eastus
+
+    vnet_name: aapdemovmvnet
+    subnet_name: default
+
+    ssh_key_name: playbookvmShrikant_key.pem
+
+    public_ip_name: "{{ vm_name }}-pip"
+    nic_name: "{{ vm_name }}-nic"
+    nsg_name: "{{ vm_name }}-nsg"
+
+    image:
+      publisher: Canonical
+      offer: ubuntu-24_04-lts
+      sku: server
+      version: latest
+
+  tasks:
+
+    - name: Create NSG
+      azure.azcollection.azure_rm_securitygroup:
+        resource_group: "{{ resource_group }}"
+        name: "{{ nsg_name }}"
+        location: "{{ location }}"
+        rules:
+          - name: allow_ssh
+            protocol: Tcp
+            destination_port_range: 22
+            access: Allow
+            priority: 1001
+            direction: Inbound
+
+    - name: Create public IP
+      azure.azcollection.azure_rm_publicipaddress:
+        resource_group: "{{ resource_group }}"
+        name: "{{ public_ip_name }}"
+        allocation_method: Static
+        location: "{{ location }}"
+
+    - name: Create NIC
+      azure.azcollection.azure_rm_networkinterface:
+        resource_group: "{{ resource_group }}"
+        name: "{{ nic_name }}"
+        virtual_network: "{{ vnet_name }}"
+        subnet: "{{ subnet_name }}"
+        public_ip_name: "{{ public_ip_name }}"
+        security_group: "{{ nsg_name }}"
+        location: "{{ location }}"
+
+    - name: Create VM
+      azure.azcollection.azure_rm_virtualmachine:
+        resource_group: "{{ resource_group }}"
+        name: "{{ vm_name }}"
+        vm_size: Standard_B2s
+        location: "{{ location }}"
+        admin_username: azureuser
+        ssh_password_enabled: false
+        ssh_public_keys:
+          - path: /home/azureuser/.ssh/authorized_keys
+            key_data: "{{ lookup('file', ssh_key_name + '.pub') }}"
+        network_interfaces: "{{ nic_name }}"
+        image: "{{ image }}"
+        zones:
+          - 1
+
+    - name: Get public IP
+      azure.azcollection.azure_rm_publicipaddress_info:
+        resource_group: "{{ resource_group }}"
+        name: "{{ public_ip_name }}"
+      register: ip_info
+
+    - name: Show SSH command
+      debug:
+        msg: >
+          ssh -i {{ ssh_key_name }} azureuser@{{ ip_info.publicipaddresses[0].ip_address }}
